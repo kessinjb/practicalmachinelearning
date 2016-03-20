@@ -1,0 +1,106 @@
+---
+title: "Practical Machine Learning Project"
+author: "John_Kessing"
+date: "March 19, 2016"
+output: html_document
+---
+
+### Approach Summary
+##### For this project, I ended up implementing a random forest model.  Random forest models are very accurate, but can be time-consuming.  Initially, I tried to run an rpart tree model but it was not very accurate.  Next, I tried a random forest model, and once it ran, was much more accurate, which is why I used it as the final model (after performance tuning).
+
+##### However, to start, the first thing I did was explore the data after downloading and loading it into R.  When I looked at the data, the first thing I noticed was that there were many blank columns.  I removed those columns by performing a count and removing any with a significant amount of blanks.  I also know that columns with little to no variance are not helpful for a model so I removed those as well.
+
+##### Then I was ready to model and I did leverage PCA in my models to help optimize the data for the model.
+
+##### For the model itself, I trained on 75% of the data and it showed a high degree of accuracy (see below).  I then performed cross-validation by running the train model against the test set.  Once I was comfortable with the results (postResample and confusion matrix) I moved forward with the quiz set.
+
+### Load Data
+```{r}
+#### Load packages used in code
+library(caret)
+library(dplyr)
+library(doMC)
+#### Set working directory
+setwd("C:/Users/jbkessin/Documents/PML")
+
+##### Download Training File
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",destfile = "pml-training.csv" )
+
+##### Create Data Frame from CSV File for Modeling
+raw_data <- read.csv("pml-training.csv")
+
+##### Download Quiz Set to Run Model against later
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",destfile = "pml-testing.csv" )
+
+##### Create Quiz Dataframe from CSV
+quiz <- read.csv("pml-testing.csv")
+```
+
+#### Split data into Training and Test Set
+```{r}
+#### Partitiion data, 75% training, 25% testing
+inTrain = createDataPartition(raw_data$classe, p = 3/4, list=FALSE)
+train1 = raw_data[inTrain,]
+test1 = raw_data[-inTrain,]
+```
+
+#### Explore Data
+```{r, echo=FALSE}
+View(train1)
+```
+
+##### Data has lots of NAs, so will remove them. Decided to remove anything with a large number of NAs.
+### Code to Remove NAs.  Then code to remove any columns with very little variance.
+```{r}
+#### Remove NA columns #(basically keeping anything with less than 10000 NAs)
+train1 <- train1[,colSums(is.na(train1))<10000]
+### Remove zero variance columns which are not helpful for modeling purposes
+train2 <-  train1[, -nearZeroVar(train1)]
+```
+
+
+#### Model Selection, trying decision tree(rpart) and random forest(rf)
+#### Decision Tree First
+```{r}
+#### This code helps run faster by trying to push utilization of all PC cores
+registerDoMC(cores = 4)
+#### Run tree model with PCA pre-processing
+train_rpartb <- train(classe ~ ., preProcess=c("pca"), method="rpart", data=train2 )
+```
+
+#### Evaluation model
+```{r}
+train_rpartb
+```
+
+#### Model is only 28$% accurate, running random forest model
+```{r}
+cache=TRUE
+registerDoMC(cores = 4)
+mtryGrid <- expand.grid(mtry = 10 )
+tc_param <- trainControl(allowParallel = TRUE, returnResamp = "final")
+train_rfa <- train(classe ~ ., preProcess="pca",  method="rf", tuneGrid=mtryGrid, trControl = tc_param,  tunelength=21, data=train2 )
+```
+
+#### Evaluate Random Forest Model
+```{r}
+train_rfa
+```
+
+#### Model is very accurate, so I will go ahead and run against Test set for cross-validation
+```{r}
+testing <- predict(train_rfa, newdata = test1)
+```
+
+#### Check some metrics
+```{r}
+postResample(testing, test1$classe)
+confusionMatrix(testing, test1$classe)
+```
+
+#### Model is very accurate, will go ahead and run against quiz set
+```{r}
+quiz_results <- predict(train_rfa, newdata = quiz)
+```
+
+
